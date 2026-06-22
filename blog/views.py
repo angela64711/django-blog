@@ -1,16 +1,20 @@
 from django.shortcuts import render, get_object_or_404
 from django.views import generic
+from django.contrib import messages
 from .models import Post
+from .forms import CommentForm
 
 # Create your views here.
 
 
+# Homepage (Class view)
 class PostList(generic.ListView):
     queryset = Post.objects.all()
     template_name = "blog/index.html"
     paginate_by = 6
 
 
+# Specific Blog Post (Function view)
 def post_detail(request, slug):
     """
     Display an individual :model:`blog.Post`.
@@ -27,9 +31,41 @@ def post_detail(request, slug):
 
     queryset = Post.objects.filter(status=1)
     post = get_object_or_404(queryset, slug=slug)
+    # Get all comments (reverse lookup from Comment Model)
+    comments = post.comments.all().order_by("-created_on")
+    # Count approved comments
+    comment_count = post.comments.filter(approved=True).count()
 
+    # Is someone submitting a form? The view branches here
+    # If it's a GET request, skip the entire POST block and go to the comment_form
+    if request.method == "POST":
+        # the data from request.POST fill the form oblect
+        comment_form = CommentForm(data=request.POST)
+
+        if comment_form.is_valid():
+            # Create the comment object
+            comment = comment_form.save(commit=False)
+            # Dont't save yet, the object isn't complete without author and post
+            comment.author = request.user
+            comment.post = post
+            comment.save()
+            # Show success message
+            messages.add_message(
+                request, messages.SUCCESS, "Comment submitted and awaiting approval"
+            )
+
+    # Outside the POST block, create an empty form to display
+    # The CommentForm class was created in forms.py and now it's assigned to the variable comment_form
+    comment_form = CommentForm()
+
+    # Render the template
     return render(
         request,
         "blog/post_detail.html",
-        {"post": post, "coder": "Angela"},
+        {
+            "post": post,
+            "comments": comments,
+            "comment_count": comment_count,
+            "comment_form": comment_form,
+        },
     )
